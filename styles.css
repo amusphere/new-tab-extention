@@ -21,6 +21,34 @@ body {
   position: relative;
 }
 
+.background-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.background-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+.background-image.is-visible {
+  opacity: 1;
+}
+
 /* 背景画像の上にオーバーレイを追加して文字を読みやすく */
 body::before {
   content: '';

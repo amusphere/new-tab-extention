@@ -1,3 +1,19 @@
+let backgroundContainer = null;
+let activeBackgroundLayer = null;
+const LAST_BACKGROUND_KEY = 'lastBackgroundUrl';
+const MAX_BACKGROUND_LOAD_ATTEMPTS = 5;
+const BACKGROUND_SWAP_DELAY_MS = 3000;
+
+let backgroundSwapTimeoutId = null;
+const backgroundSwapReadyAt = performance.now() + BACKGROUND_SWAP_DELAY_MS;
+
+function ensureBackgroundContainer() {
+  if (!backgroundContainer) {
+    backgroundContainer = document.getElementById('backgroundContainer');
+  }
+  return backgroundContainer;
+}
+
 // 時刻と日付を更新する関数
 function updateTime() {
   const now = new Date();
@@ -122,24 +138,107 @@ async function displayRecentSites() {
   }
 }
 
-// ランダムな背景画像を設定
-function setRandomBackground() {
-  // ランダムなIDを生成して毎回異なる画像を取得
-  const randomId = Math.floor(Math.random() * 1000);
-  const imageUrl = `https://picsum.photos/1920/1080?random=${randomId}`;
+function showBackgroundImage(imageUrl, { immediate = false } = {}) {
+  const container = ensureBackgroundContainer();
+
+  if (!container) {
+    document.body.style.backgroundImage = `url('${imageUrl}')`;
+    document.body.classList.add('loaded');
+    activeBackgroundLayer = null;
+    return;
+  }
+
+  const nextLayer = document.createElement('div');
+  nextLayer.className = 'background-image';
+  nextLayer.style.backgroundImage = `url('${imageUrl}')`;
+  container.appendChild(nextLayer);
+
+  if (immediate) {
+    nextLayer.classList.add('is-visible');
+    if (activeBackgroundLayer) {
+      activeBackgroundLayer.remove();
+    }
+  } else {
+    requestAnimationFrame(() => {
+      nextLayer.classList.add('is-visible');
+    });
+
+    if (activeBackgroundLayer) {
+      const previousLayer = activeBackgroundLayer;
+      previousLayer.addEventListener('transitionend', () => {
+        previousLayer.remove();
+      }, { once: true });
+      previousLayer.classList.remove('is-visible');
+    }
+  }
+
+  activeBackgroundLayer = nextLayer;
+  document.body.classList.add('loaded');
+}
+
+function scheduleBackgroundSwap(action) {
+  const now = performance.now();
+
+  if (now >= backgroundSwapReadyAt) {
+    action();
+    return;
+  }
+
+  if (backgroundSwapTimeoutId) {
+    clearTimeout(backgroundSwapTimeoutId);
+  }
+
+  const delay = Math.max(0, backgroundSwapReadyAt - now);
+  backgroundSwapTimeoutId = window.setTimeout(() => {
+    backgroundSwapTimeoutId = null;
+    action();
+  }, delay);
+}
+
+function setStoredBackground() {
+  try {
+    const storedUrl = localStorage.getItem(LAST_BACKGROUND_KEY);
+    if (storedUrl) {
+      showBackgroundImage(storedUrl, { immediate: true });
+    }
+  } catch (error) {
+    console.error('背景画像の復元に失敗しました:', error);
+  }
+}
+
+function getRandomBackgroundUrl() {
+  const imageId = Math.floor(Math.random() * 1000) + 1;
+  return `https://picsum.photos/id/${imageId}/1920/1080`;
+}
+
+function setRandomBackground(attempt = 1) {
+  const imageUrl = getRandomBackgroundUrl();
 
   // 画像を事前に読み込む
   const img = new Image();
   img.onload = () => {
-    // 画像読み込み完了後に背景を設定してクラスを追加
-    document.body.style.backgroundImage = `url('${imageUrl}')`;
-    document.body.classList.add('loaded');
+    scheduleBackgroundSwap(() => {
+      showBackgroundImage(imageUrl);
+      try {
+        localStorage.setItem(LAST_BACKGROUND_KEY, imageUrl);
+      } catch (error) {
+        console.error('背景画像の保存に失敗しました:', error);
+      }
+    });
+  };
+  img.onerror = (error) => {
+    console.error('背景画像の取得に失敗しました:', error);
+    if (attempt < MAX_BACKGROUND_LOAD_ATTEMPTS) {
+      setRandomBackground(attempt + 1);
+    }
   };
   img.src = imageUrl;
 }
 
 // 初期化
 document.addEventListener('DOMContentLoaded', () => {
+  ensureBackgroundContainer();
+  setStoredBackground();
   setRandomBackground();
   updateTime();
   setupSearch();
