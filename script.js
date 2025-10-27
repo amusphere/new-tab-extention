@@ -177,6 +177,11 @@ function showBackgroundImage(imageUrl, { immediate = false } = {}) {
 }
 
 function scheduleBackgroundSwap(action) {
+  if (!activeBackgroundLayer) {
+    action();
+    return;
+  }
+
   const now = performance.now();
 
   if (now >= backgroundSwapReadyAt) {
