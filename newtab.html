@@ -8,6 +8,33 @@
 </head>
 <body>
   <div id="backgroundContainer" class="background-container"></div>
+  <div class="controls">
+    <button
+      id="reloadButton"
+      class="control-button"
+      type="button"
+      aria-label="背景を更新"
+      title="背景を更新"
+    >
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+        <polyline points="20 7 20 11 16 11" />
+      </svg>
+    </button>
+    <button
+      id="pinButton"
+      class="control-button"
+      type="button"
+      aria-pressed="false"
+      aria-label="背景を固定"
+      title="背景を固定"
+    >
+      <svg class="icon pin-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 3h10v4l-2 2v5l2 2v1H7v-1l2-2V9L7 7z" />
+        <line x1="12" y1="16" x2="12" y2="21" />
+      </svg>
+    </button>
+  </div>
   <div class="container">
     <div class="content">
       <div class="time-display">
