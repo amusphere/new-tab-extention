@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "カスタム新規タブ",
+  "version": "1.0.0",
+  "description": "新規タブを開いたときにカスタムページを表示します",
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "permissions": ["tabs", "history"],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

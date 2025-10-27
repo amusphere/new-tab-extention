@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>新しいタブ</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <div class="content">
+      <div class="time-display">
+        <div id="time" class="time">--:--</div>
+        <div id="date" class="date">----年--月--日</div>
+      </div>
+
+      <div class="search-box">
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="検索またはURLを入力..."
+          autocomplete="off"
+        >
+      </div>
+
+      <div class="shortcuts">
+        <h2>最近開いたサイト</h2>
+        <div id="recentSites" class="shortcuts-grid">
+          <!-- 履歴から動的に生成 -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
