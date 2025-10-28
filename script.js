@@ -1,3 +1,112 @@
+let backgroundContainer = null;
+let activeBackgroundLayer = null;
+let lastBackgroundMeta = null;
+
+const LAST_BACKGROUND_DATA_KEY = 'lastBackgroundDataUrl';
+const LAST_BACKGROUND_META_KEY = 'lastBackgroundMeta';
+const BACKGROUND_PINNED_KEY = 'backgroundPinned';
+const MAX_BACKGROUND_LOAD_ATTEMPTS = 5;
+const BACKGROUND_SWAP_DELAY_MS = 3000;
+const BACKGROUND_WIDTH = 1280;
+const BACKGROUND_HEIGHT = 720;
+const BACKGROUND_ID_POOL_SIZE = 1000;
+let reloadButton = null;
+let pinButton = null;
+let isBackgroundPinned = false;
+let isBackgroundLoading = false;
+
+let backgroundSwapTimeoutId = null;
+const backgroundSwapReadyAt = performance.now() + BACKGROUND_SWAP_DELAY_MS;
+
+function buildBackgroundUrl(imageId) {
+  return `https://picsum.photos/id/${imageId}/${BACKGROUND_WIDTH}/${BACKGROUND_HEIGHT}`;
+}
+
+function pickRandomBackgroundId() {
+  return Math.floor(Math.random() * BACKGROUND_ID_POOL_SIZE) + 1;
+}
+
+function getNextBackgroundId(previousId) {
+  if (typeof previousId === 'number') {
+    return (previousId % BACKGROUND_ID_POOL_SIZE) + 1;
+  }
+  return pickRandomBackgroundId();
+}
+
+function getCachedBackground() {
+  try {
+    const dataUrl = localStorage.getItem(LAST_BACKGROUND_DATA_KEY);
+    const rawMeta = localStorage.getItem(LAST_BACKGROUND_META_KEY);
+    const meta = rawMeta ? JSON.parse(rawMeta) : null;
+    return { dataUrl, meta };
+  } catch (error) {
+    console.error('背景キャッシュの読み込みに失敗しました:', error);
+    return { dataUrl: null, meta: null };
+  }
+}
+
+function persistBackground(dataUrl, meta) {
+  lastBackgroundMeta = meta ?? null;
+
+  try {
+    if (dataUrl) {
+      localStorage.setItem(LAST_BACKGROUND_DATA_KEY, dataUrl);
+    } else {
+      localStorage.removeItem(LAST_BACKGROUND_DATA_KEY);
+    }
+
+    if (meta) {
+      localStorage.setItem(LAST_BACKGROUND_META_KEY, JSON.stringify(meta));
+    } else {
+      localStorage.removeItem(LAST_BACKGROUND_META_KEY);
+    }
+  } catch (error) {
+    console.error('背景キャッシュの保存に失敗しました:', error);
+  }
+}
+
+function loadPinState() {
+  try {
+    isBackgroundPinned = localStorage.getItem(BACKGROUND_PINNED_KEY) === 'true';
+  } catch (error) {
+    console.error('ピン状態の読み込みに失敗しました:', error);
+    isBackgroundPinned = false;
+  }
+}
+
+function savePinState(pinned) {
+  try {
+    localStorage.setItem(BACKGROUND_PINNED_KEY, pinned ? 'true' : 'false');
+  } catch (error) {
+    console.error('ピン状態の保存に失敗しました:', error);
+  }
+}
+
+function updateControlStates() {
+  if (reloadButton) {
+    const disabled = isBackgroundLoading || isBackgroundPinned;
+    reloadButton.disabled = disabled;
+    const label = '背景を更新';
+    reloadButton.setAttribute('title', label);
+    reloadButton.setAttribute('aria-label', label);
+    reloadButton.classList.toggle('is-loading', isBackgroundLoading);
+  }
+  if (pinButton) {
+    pinButton.classList.toggle('is-active', isBackgroundPinned);
+    pinButton.setAttribute('aria-pressed', String(isBackgroundPinned));
+    const label = isBackgroundPinned ? '背景の固定を解除' : '背景を固定';
+    pinButton.setAttribute('title', label);
+    pinButton.setAttribute('aria-label', label);
+  }
+}
+
+function ensureBackgroundContainer() {
+  if (!backgroundContainer) {
+    backgroundContainer = document.getElementById('backgroundContainer');
+  }
+  return backgroundContainer;
+}
+
 // 時刻と日付を更新する関数
 function updateTime() {
   const now = new Date();
@@ -122,25 +231,189 @@ async function displayRecentSites() {
   }
 }
 
-// ランダムな背景画像を設定
-function setRandomBackground() {
-  // ランダムなIDを生成して毎回異なる画像を取得
-  const randomId = Math.floor(Math.random() * 1000);
-  const imageUrl = `https://picsum.photos/1920/1080?random=${randomId}`;
+function showBackgroundImage(imageUrl, { immediate = false } = {}) {
+  const container = ensureBackgroundContainer();
 
-  // 画像を事前に読み込む
-  const img = new Image();
-  img.onload = () => {
-    // 画像読み込み完了後に背景を設定してクラスを追加
+  if (!container) {
     document.body.style.backgroundImage = `url('${imageUrl}')`;
     document.body.classList.add('loaded');
-  };
-  img.src = imageUrl;
+    activeBackgroundLayer = null;
+    return;
+  }
+
+  const nextLayer = document.createElement('div');
+  nextLayer.className = 'background-image';
+  nextLayer.style.backgroundImage = `url('${imageUrl}')`;
+  container.appendChild(nextLayer);
+
+  if (immediate) {
+    nextLayer.classList.add('is-visible');
+    if (activeBackgroundLayer) {
+      activeBackgroundLayer.remove();
+    }
+  } else {
+    requestAnimationFrame(() => {
+      nextLayer.classList.add('is-visible');
+    });
+
+    if (activeBackgroundLayer) {
+      const previousLayer = activeBackgroundLayer;
+      previousLayer.addEventListener('transitionend', () => {
+        previousLayer.remove();
+      }, { once: true });
+      previousLayer.classList.remove('is-visible');
+    }
+  }
+
+  activeBackgroundLayer = nextLayer;
+  document.body.classList.add('loaded');
+}
+
+function scheduleBackgroundSwap(action) {
+  if (!activeBackgroundLayer) {
+    action();
+    return;
+  }
+
+  const now = performance.now();
+
+  if (now >= backgroundSwapReadyAt) {
+    action();
+    return;
+  }
+
+  if (backgroundSwapTimeoutId) {
+    clearTimeout(backgroundSwapTimeoutId);
+  }
+
+  const delay = Math.max(0, backgroundSwapReadyAt - now);
+  backgroundSwapTimeoutId = window.setTimeout(() => {
+    backgroundSwapTimeoutId = null;
+    action();
+  }, delay);
+}
+
+async function setStoredBackground() {
+  try {
+    const { dataUrl, meta } = getCachedBackground();
+    if (dataUrl) {
+      lastBackgroundMeta = meta ?? null;
+      showBackgroundImage(dataUrl, { immediate: true });
+      return true;
+    }
+  } catch (error) {
+    console.error('背景画像の復元に失敗しました:', error);
+  }
+  return false;
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function setRandomBackground(attempt = 1) {
+  if (isBackgroundPinned || isBackgroundLoading) {
+    return;
+  }
+
+  isBackgroundLoading = true;
+  updateControlStates();
+
+  const candidateId = getNextBackgroundId(lastBackgroundMeta?.id);
+  const imageUrl = buildBackgroundUrl(candidateId);
+  let shouldRetry = false;
+
+  try {
+    const response = await fetch(imageUrl, {
+      cache: 'no-store',
+      mode: 'cors'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch background: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const dataUrl = await blobToDataUrl(blob);
+
+    const meta = {
+      id: candidateId,
+      fetchedAt: Date.now()
+    };
+
+    if (isBackgroundPinned) {
+      return;
+    }
+
+    persistBackground(dataUrl, meta);
+    scheduleBackgroundSwap(() => {
+      if (isBackgroundPinned) {
+        return;
+      }
+      showBackgroundImage(dataUrl);
+    });
+  } catch (error) {
+    console.error('背景画像の取得に失敗しました:', error);
+    if (attempt < MAX_BACKGROUND_LOAD_ATTEMPTS) {
+      shouldRetry = true;
+    }
+  } finally {
+    isBackgroundLoading = false;
+    updateControlStates();
+  }
+
+  if (shouldRetry && !isBackgroundPinned) {
+    return setRandomBackground(attempt + 1);
+  }
 }
 
 // 初期化
 document.addEventListener('DOMContentLoaded', () => {
-  setRandomBackground();
+  ensureBackgroundContainer();
+
+  reloadButton = document.getElementById('reloadButton');
+  pinButton = document.getElementById('pinButton');
+
+  loadPinState();
+  updateControlStates();
+
+  if (pinButton) {
+    pinButton.addEventListener('click', () => {
+      isBackgroundPinned = !isBackgroundPinned;
+      savePinState(isBackgroundPinned);
+      updateControlStates();
+
+      if (!isBackgroundPinned) {
+        setRandomBackground().catch((error) => {
+          console.error('背景画像の再取得に失敗しました:', error);
+        });
+      }
+    });
+  }
+
+  if (reloadButton) {
+    reloadButton.addEventListener('click', () => {
+      setRandomBackground().catch((error) => {
+        console.error('背景画像の再取得に失敗しました:', error);
+      });
+    });
+  }
+
+  (async () => {
+    await setStoredBackground();
+    updateControlStates();
+    try {
+      await setRandomBackground();
+    } catch (error) {
+      console.error('背景画像の設定に失敗しました:', error);
+    }
+  })();
+
   updateTime();
   setupSearch();
   displayRecentSites();
